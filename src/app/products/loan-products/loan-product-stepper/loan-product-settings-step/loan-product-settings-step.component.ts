@@ -3,6 +3,7 @@ import { UntypedFormGroup, UntypedFormBuilder, Validators, UntypedFormControl } 
 import { LoanProducts } from '../../loan-products';
 import { rangeValidator } from 'app/shared/validators/percentage.validator';
 import { GlobalConfiguration } from 'app/system/configurations/global-configurations-tab/configuration.model';
+import { CodeName, OptionData } from 'app/shared/models/option-data.model';
 
 
 @Component({
@@ -25,7 +26,8 @@ export class LoanProductSettingsStepComponent implements OnInit {
   amortizationTypeData: any;
   interestTypeData: any;
   interestCalculationPeriodTypeData: any;
-  transactionProcessingStrategyData: any;
+  transactionProcessingStrategyData: CodeName[] = [];
+  transactionProcessingStrategyDataBase: CodeName[] = [];
   daysInYearTypeData: any;
   daysInMonthTypeData: any;
   preClosureInterestCalculationStrategyData: any;
@@ -36,6 +38,10 @@ export class LoanProductSettingsStepComponent implements OnInit {
   interestRecalculationDayOfWeekTypeData: any;
   interestRecalculationOnDayTypeData: any;
   delinquencyBucketData: any;
+  loanScheduleTypeData: OptionData[] = [];
+  loanScheduleProcessingTypeData: OptionData[] = [];
+  isAdvancedTransactionProcessingStrategy = false;
+  advancedTransactionProcessingStrategyDisabled = true;
 
   /** Values to Days for Repayments */
   defaultConfigValues: GlobalConfiguration[] = [];
@@ -59,6 +65,7 @@ export class LoanProductSettingsStepComponent implements OnInit {
     this.interestTypeData = this.loanProductsTemplate.interestTypeOptions;
     this.interestCalculationPeriodTypeData = this.loanProductsTemplate.interestCalculationPeriodTypeOptions;
     this.transactionProcessingStrategyData = this.loanProductsTemplate.transactionProcessingStrategyOptions;
+    this.transactionProcessingStrategyDataBase = this.loanProductsTemplate.transactionProcessingStrategyOptions;
     this.daysInYearTypeData = this.loanProductsTemplate.daysInYearTypeOptions;
     this.daysInMonthTypeData = this.loanProductsTemplate.daysInMonthTypeOptions;
     this.preClosureInterestCalculationStrategyData = this.loanProductsTemplate.preClosureInterestCalculationStrategyOptions;
@@ -70,14 +77,17 @@ export class LoanProductSettingsStepComponent implements OnInit {
     this.interestRecalculationDayOfWeekTypeData = this.loanProductsTemplate.interestRecalculationDayOfWeekTypeOptions;
     this.interestRecalculationOnDayTypeData = Array.from({ length: 28 }, (_, index) => index + 1);
     this.delinquencyBucketData = this.loanProductsTemplate.delinquencyBucketOptions;
+    this.loanScheduleTypeData = this.loanProductsTemplate.loanScheduleTypeOptions;
+    this.loanScheduleProcessingTypeData = this.loanProductsTemplate.loanScheduleProcessingTypeOptions;
 
+    const transactionProcessingStrategyCode: string = this.loanProductsTemplate.transactionProcessingStrategyCode || this.transactionProcessingStrategyData[0].code;
     this.loanProductSettingsForm.patchValue({
       'amortizationType': this.loanProductsTemplate.amortizationType.id,
       'interestType': this.loanProductsTemplate.interestType.id,
       'isEqualAmortization': this.loanProductsTemplate.isEqualAmortization,
       'interestCalculationPeriodType': this.loanProductsTemplate.interestCalculationPeriodType.id,
       'allowPartialPeriodInterestCalcualtion': this.loanProductsTemplate.allowPartialPeriodInterestCalcualtion,
-      'transactionProcessingStrategyCode': this.loanProductsTemplate.transactionProcessingStrategyCode || this.transactionProcessingStrategyData[0].code,
+      'transactionProcessingStrategyCode': transactionProcessingStrategyCode,
       'graceOnPrincipalPayment': this.loanProductsTemplate.graceOnPrincipalPayment,
       'graceOnInterestPayment': this.loanProductsTemplate.graceOnInterestPayment,
       'graceOnInterestCharged': this.loanProductsTemplate.graceOnInterestCharged,
@@ -100,8 +110,16 @@ export class LoanProductSettingsStepComponent implements OnInit {
       'maxTrancheCount': this.loanProductsTemplate.maxTrancheCount,
       'outstandingLoanBalance': this.loanProductsTemplate.outstandingLoanBalance,
       'enableDownPayment': this.loanProductsTemplate.enableDownPayment,
-      'enableInstallmentLevelDelinquency': this.loanProductsTemplate.enableInstallmentLevelDelinquency
+      'enableInstallmentLevelDelinquency': this.loanProductsTemplate.enableInstallmentLevelDelinquency,
+      'loanScheduleType': this.loanProductsTemplate.loanScheduleType.code,
     });
+
+    this.isAdvancedTransactionProcessingStrategy = LoanProducts.isAdvancedPaymentAllocationStrategy(transactionProcessingStrategyCode);
+    if (this.isAdvancedTransactionProcessingStrategy) {
+      this.loanProductSettingsForm.addControl('loanScheduleProcessingType', new UntypedFormControl(
+        this.loanProductsTemplate.loanScheduleProcessingType.code || LoanProducts.LOAN_SCHEDULE_PROCESSING_TYPE_HORIZONTAL,
+        [Validators.required ]));
+    }
 
     if (this.loanProductsTemplate.dueDaysForRepaymentEvent != null &&
       this.loanProductsTemplate.overDueDaysForRepaymentEvent != null) {
@@ -224,6 +242,7 @@ export class LoanProductSettingsStepComponent implements OnInit {
       'useDueForRepaymentsConfigurations': [false],
       'dueDaysForRepaymentEvent': [''],
       'overDueDaysForRepaymentEvent': [''],
+      'loanScheduleType': [LoanProducts.LOAN_SCHEDULE_TYPE_CUMULATIVE, Validators.required],
     });
   }
 
@@ -384,6 +403,13 @@ export class LoanProductSettingsStepComponent implements OnInit {
     this.loanProductSettingsForm.get('transactionProcessingStrategyCode').valueChanges
       .subscribe((transactionProcessingStrategyCode: string) => {
         this.advancePaymentStrategy.emit(transactionProcessingStrategyCode);
+        this.isAdvancedTransactionProcessingStrategy =  LoanProducts.isAdvancedPaymentAllocationStrategy(transactionProcessingStrategyCode);
+        if (this.isAdvancedTransactionProcessingStrategy) {
+          this.loanProductSettingsForm.addControl('loanScheduleProcessingType', new UntypedFormControl(
+              LoanProducts.LOAN_SCHEDULE_PROCESSING_TYPE_HORIZONTAL, [Validators.required]));
+        } else {
+          this.loanProductSettingsForm.removeControl('loanScheduleProcessingType');
+        }
       });
 
     this.loanProductSettingsForm.get('allowAttributeConfiguration').valueChanges
@@ -424,6 +450,35 @@ export class LoanProductSettingsStepComponent implements OnInit {
         this.loanProductSettingsForm.patchValue({
           'dueDaysForRepaymentEvent': this.getGlobalConfigValue(LoanProducts.DAYS_BEFORE_REPAYMENT_IS_DUE),
           'overDueDaysForRepaymentEvent': this.getGlobalConfigValue(LoanProducts.DAYS_AFTER_REPAYMENT_IS_OVERDUE)
+        });
+      }
+    });
+
+    this.loanProductSettingsForm.get('loanScheduleType').valueChanges
+    .subscribe((loanScheduleType: string) => {
+      this.transactionProcessingStrategyData = [];
+      if (loanScheduleType === LoanProducts.LOAN_SCHEDULE_TYPE_CUMULATIVE) {
+        // Filter Advanced Payment Allocation Strategy
+        this.transactionProcessingStrategyData = this.transactionProcessingStrategyDataBase.filter(
+          (cn: CodeName) => !LoanProducts.isAdvancedPaymentAllocationStrategy(cn.code)
+        );
+        if (LoanProducts.isAdvancedPaymentAllocationStrategy(this.loanProductSettingsForm.value.transactionProcessingStrategyCode)) {
+          this.loanProductSettingsForm.patchValue({
+            'transactionProcessingStrategyCode': this.transactionProcessingStrategyData[0].code
+          });
+        }
+        this.advancedTransactionProcessingStrategyDisabled = false;
+      } else {
+        // Only Advanced Payment Allocation Strategy
+        this.transactionProcessingStrategyDataBase.some(
+          (cn: CodeName) => {
+          if (LoanProducts.isAdvancedPaymentAllocationStrategy(cn.code)) {
+            this.transactionProcessingStrategyData.push(cn);
+          }
+        });
+        this.advancedTransactionProcessingStrategyDisabled = true;
+        this.loanProductSettingsForm.patchValue({
+          'transactionProcessingStrategyCode': this.transactionProcessingStrategyData[0].code
         });
       }
     });
